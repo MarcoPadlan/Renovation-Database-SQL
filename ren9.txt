@@ -1,0 +1,78 @@
+USE renovation; 
+
+DELIMITER $$
+DROP PROCEDURE IF EXISTS printInvoice$$
+CREATE PROCEDURE printInvoice (
+IN clientID int,
+INOUT invoice VARCHAR(4000)
+)
+BEGIN
+DECLARE v_lines varchar(100) default "----------------------------------------------";
+DECLARE v_clientFirst varchar(100) default "";
+DECLARE v_clientLast varchar(100) default "";
+DECLARE v_contractorFirst varchar(100) default "";
+DECLARE v_contractorLast varchar(100) default "";
+DECLARE v_supplier varchar(100) default "";
+DECLARE v_material varchar(100) default "";
+DECLARE v_cost decimal(8,2) default 0.0;
+DECLARE v_sum decimal(8,2) default 0.0;
+DECLARE v_count integer default 0;
+DECLARE v_finished INTEGER DEFAULT 0;
+
+DECLARE client_cursor CURSOR FOR 
+SELECT cl.firstName, cl.lastName AS Client,
+co.firstName, co.lastName AS Contractor,
+RPAD(s.supplierName, 35, ' ') AS Supplier, RPAD(m.description, 65, ' ') AS material, 
+m.cost AS Cost
+FROM material m, supplier s, contractor co, client cl, invoice i, project p
+WHERE i.projectID = p.id
+AND i.materialID = m.id
+AND p.clientID = cl.id
+AND p.contractorID = co.id
+AND m.supplierID = s.ID;
+
+DECLARE CONTINUE HANDLER 
+        FOR NOT FOUND SET v_finished = 1;
+        
+OPEN client_cursor;
+
+get_client: LOOP
+
+FETCH client_cursor INTO v_clientFirst, v_clientLast, v_clientFirst, v_clientLast, v_supplier, v_material, v_cost;
+IF v_finished = 1 THEN 
+ LEAVE get_client;
+ END IF;
+ 
+ SET v_count = v_count+1;
+ IF v_count = 1 THEN
+	SET invoice = CONCAT(invoice, '\nINVOICE PREPARED FOR:\n\n');
+    SET invoice = CONCAT(invoice, '\n', v_lines, '\n');     
+    SET invoice = CONCAT(invoice, '\nCONTRACTOR\n\n');
+	SET invoice = CONCAT(invoice, v_contractorFirst, '', v_contractorLast);
+    SET invoice = CONCAT(invoice, '\n', v_lines, '\n');     
+    SET invoice = CONCAT(invoice, '\nCUSTOMER\n\n');
+	SET invoice = CONCAT(invoice, v_clientFirst, '', v_clientLast);
+    SET invoice = CONCAT(invoice, '\n', v_lines, '\n');     
+    SET invoice = CONCAT(invoice, 'SUPPLIER', char(9), char(9), char(9), 'MATERIAL', char(9), char(9), char(9), char(9), char(9), char(9), char(9));
+	SET invoice = CONCAT(invoice, '\n', v_lines, '\n');  
+    SET invoice = CONCAT(invoice, v_supplier, v_material, '$', v_cost);
+    SET v_sum = v_sum + v_cost;
+    
+ELSE 
+	SET invoice = CONCAT(invoice, '\n');
+	SET invoice = CONCAT(invoice, v_supplier, v_material, '$', v_cost);
+    SET v_sum = v_sum + v_cost;
+END IF;
+
+END LOOP get_client;
+
+SET invoice = CONCAT(invoice, '\n\n', char(9), char(9), char(9), char(9), char(9), char(9), char(9), 'TOTAL', char(9), char(9), char(9), char(9), ' $', v_sum, '\n');
+CLOSE client_cursor;
+
+END $$
+
+DELIMiTER ;
+
+SET @invoice = "";
+CALL printInvoice(15,@invoice);
+SELECT @invoice;
